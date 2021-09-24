@@ -26,7 +26,7 @@ namespace training_diary_backend.Services.Polar
             ClientId = client;
             ClientSecret = secret;
         }
-        public string get_authorization_url()
+        public async Task<string> get_authorization_url()
         {
             Dictionary<string, string> Params = new Dictionary<string, string>();
 
@@ -58,9 +58,7 @@ namespace training_diary_backend.Services.Polar
 
             string result = await response.Content.ReadAsStringAsync();
 
-            Console.WriteLine(result);
-
-            return string.Empty;
+            return result;
         }
     }
 }

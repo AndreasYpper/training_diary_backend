@@ -14,9 +14,9 @@ namespace training_diary_backend.Services.Polar
         public string ClientSecret { get; set; }
         public string redirect_url { get; set; }
 
-        public string authorization_url()
+        public async Task<string> authorization_url()
         {
-            return _oauth.get_authorization_url();
+            return await _oauth.get_authorization_url();
         }
         
         public async Task<string> get_access_token(string code)

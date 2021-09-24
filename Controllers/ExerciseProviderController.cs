@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using training_diary_backend.Models;
 using training_diary_backend.Services.Polar;
 
@@ -20,8 +22,7 @@ namespace training_diary_backend.Controllers
         public async Task<ActionResult<ServiceResponse<string>>> Authorize()
         {
             var response = await _provider.Authorize();
-            
-            Console.WriteLine(response.Data);
+
             return Ok(response);
         }
 
@@ -30,7 +31,22 @@ namespace training_diary_backend.Controllers
         {
             var response = await _provider.Callback(code);
 
-            return Ok();
+            return Ok(response);
+        }
+
+        [HttpPost("Register")]
+        public async Task<ActionResult> Register(string accessToken, int expiresIn, int xUserId, int userId)
+        {
+            var response = await _provider.RegisterUser(accessToken, expiresIn, xUserId, userId);
+
+            return Ok(response);
+        }
+
+        [HttpDelete("Unregister")]
+        public async Task<ActionResult> Unregister(string accessToken, int polarUserId)
+        {
+            var response = await _provider.DeleteUser(accessToken, polarUserId);
+            return Ok(response);
         }
     }
 }

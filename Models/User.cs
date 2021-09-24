@@ -12,5 +12,6 @@ namespace training_diary_backend.Models
         public byte[] PasswordSalt { get; set; }
 
         public List<Workout> Workouts { get; set; }
+        public PolarUser PolarUser { get; set; }
     }
 }
