@@ -1,5 +1,5 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 using training_diary_backend.Models;
 
 namespace training_diary_backend.Services.Polar
@@ -10,5 +10,6 @@ namespace training_diary_backend.Services.Polar
         Task<ServiceResponse<string>> Callback(string code);
         Task<ServiceResponse<string>> RegisterUser(string accessToken, int expiresIn, int xUserId, int userId);
         Task<ServiceResponse<string>> DeleteUser(string accessToken, int polarUserId);
+        Task<ServiceResponse<List<string>>> GetNewWorkouts(int polarUserId);
     }
 }

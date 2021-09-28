@@ -48,5 +48,13 @@ namespace training_diary_backend.Controllers
             var response = await _provider.DeleteUser(accessToken, polarUserId);
             return Ok(response);
         }
+
+        [HttpPost("New_workouts")]
+        public async Task<ActionResult> NewWorkouts(int polarUserId)
+        {
+            var response = await _provider.GetNewWorkouts(polarUserId);
+
+            return Ok(response);
+        }
     }
 }
