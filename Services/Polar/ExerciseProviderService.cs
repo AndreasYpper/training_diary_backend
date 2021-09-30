@@ -19,8 +19,10 @@ namespace training_diary_backend.Services.Polar
         private readonly IConfiguration _config;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly DataContext _context;
-        public ExerciseProviderService(IConfiguration config, IHttpContextAccessor httpContextAccessor, DataContext context)
+        private readonly IProviderUser _providerUser;
+        public ExerciseProviderService(IConfiguration config, IHttpContextAccessor httpContextAccessor, DataContext context, IProviderUser providerUser)
         {
+            _providerUser = providerUser;
             _context = context;
             _httpContextAccessor = httpContextAccessor;
             _config = config;
@@ -31,10 +33,7 @@ namespace training_diary_backend.Services.Polar
         {
             var response = new ServiceResponse<string>();
 
-            response.Data = get_authorization_url();
-
-            response.Success = true;
-
+            response = _providerUser.GetAuthorizationUrl();
 
             return response;
         }
@@ -43,9 +42,7 @@ namespace training_diary_backend.Services.Polar
         {
             var response = new ServiceResponse<string>();
 
-            response.Data = await get_access_token(code);
-
-            response.Success = true;
+            response = await _providerUser.GetAccessToken(code);
 
             return response;
         }
@@ -54,21 +51,9 @@ namespace training_diary_backend.Services.Polar
         {
             var response = new ServiceResponse<string>();
 
-            response.Data = await RegisterUserCall(accessToken, userId);
+            response = await _providerUser.RegisterUser(accessToken, userId);
 
-            if (response.Data == "Conflict")
-            {
-                response.Success = false;
-                response.Message = "User is already registered.";
-            }
-
-            else if (response.Data == "NoContent")
-            {
-                response.Success = false;
-                response.Message = "User not found.";
-            }
-
-            else
+            if (response.Success)
             {
                 User user = await _context.Users.FirstAsync(u => u.Id == userId);
 
@@ -83,7 +68,6 @@ namespace training_diary_backend.Services.Polar
                 await _context.SaveChangesAsync();
 
                 response.Data = polar.Id.ToString();
-                response.Success = true;
             }
 
             return response;
@@ -93,7 +77,7 @@ namespace training_diary_backend.Services.Polar
         {
             var response = new ServiceResponse<string>();
 
-            response.Data = await UnregisterUser(accessToken, polarUserId);
+            response = await _providerUser.UnregisterUser(accessToken, polarUserId);
 
             if (response.Data == "NoContent")
             {
@@ -115,17 +99,126 @@ namespace training_diary_backend.Services.Polar
             return response;
         }
 
-        public async Task<ServiceResponse<List<string>>> GetNewWorkouts(int polarUserId)
+        public async Task<ServiceResponse<string>> GetNewWorkouts(int polarUserId)
         {
-            var response = new ServiceResponse<List<string>>();
+            var response = new ServiceResponse<string>();
 
             PolarUser polar = await _context.PolarUsers.FirstOrDefaultAsync(p => p.PolarUserId == polarUserId);
+            User user = await _context.Users.FirstOrDefaultAsync(u => u.Id == polar.UserId);
+
+            var transaction = await CreateTransaction(polar);
+
+            if (!transaction.Success)
+            {
+                response = transaction;
+            }
+            else
+            {
+                JObject transactionJson = JObject.Parse(transaction.Data);
+
+                var exercises = await GetTransactionWorkouts(int.Parse(transactionJson["transaction-id"].ToString()), transactionJson["resource-uri"].ToString(), polar.Token);
+
+                if (!exercises.Success)
+                {
+                    response = exercises;
+                }
+
+                else
+                {
+                    var commitTransaction = await CommitTransaction(int.Parse(transactionJson["transaction-id"].ToString()), polar.PolarUserId, polar.Token);
+                    if (!commitTransaction.Success)
+                    {
+                        response = commitTransaction;
+                    }
+
+                    else
+                    {
+                        response = exercises;
+                        JObject exerciseJson = JObject.Parse(exercises.Data);
+                        foreach (var exercise in exerciseJson["exercises"])
+                        {
+                            PolarWorkout workout = new PolarWorkout();
+                            workout.ExerciseUrl = exercise.ToString();
+                            workout.User = user;
+
+                            _context.PolarWorkouts.Add(workout);
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                }
+            }
+
+            return response;
+        }
+
+        public async Task<ServiceResponse<string>> GetWorkout(int workoutId, int polarUserId)
+        {
+            var response = new ServiceResponse<string>();
+
+            try
+            {
+                PolarWorkout workout = await _context.PolarWorkouts.FirstAsync(w => w.Id == workoutId);
+                PolarUser polar = await _context.PolarUsers.FirstAsync(p => p.Id == polarUserId);
+
+                var workoutData = await GetWorkoutCall(workout.ExerciseUrl, polar.Token);
+            }
+            catch (Exception ex)
+            {
+                response.Success = false;
+                response.Message = ex.Message;
+            }
+
+
+            return response;
+        }
+
+        private async Task<ServiceResponse<string>> GetWorkoutCall(string exerciseUrl, string token)
+        {
+            var response = new ServiceResponse<string>();
+
+            var client = new HttpClient();
+            client.BaseAddress = new Uri(exerciseUrl);
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            Console.WriteLine(client.DefaultRequestHeaders);
+
+            var polarResponse = await client.GetAsync(client.BaseAddress);
+            Console.WriteLine(polarResponse);
+
+            if (polarResponse.StatusCode.ToString() == "NoContent")
+            {
+                response.Success = false;
+                response.Message = "No content";
+            }
+            else if (polarResponse.StatusCode.ToString() == "OK")
+            {
+                string result = await polarResponse.Content.ReadAsStringAsync();
+                response.Data = result;
+                response.Success = true;
+            }
+
+            else
+            {
+                response.Success = false;
+                response.Message = polarResponse.StatusCode.ToString();
+                string result = await polarResponse.Content.ReadAsStringAsync();
+                response.Data = result;
+            }
+
+            return response;
+        }
+
+        
+
+        private async Task<ServiceResponse<string>> CreateTransaction(PolarUser user)
+        {
+            var response = new ServiceResponse<string>();
 
             var client = new HttpClient();
 
-            client.BaseAddress = new Uri(_config.GetSection("Polar:Url").Value.ToString() + "/users/" + polarUserId + "/exercise-transactions");
+            client.BaseAddress = new Uri(_config.GetSection("Polar:Url").Value.ToString() + "/users/" + user.PolarUserId + "/exercise-transactions");
             client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json;");
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", polar.Token);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", user.Token);
 
 
             var polarResponse = await client.PostAsync(client.BaseAddress, new StringContent(""));
@@ -138,78 +231,11 @@ namespace training_diary_backend.Services.Polar
             else
             {
                 var result = await polarResponse.Content.ReadAsStringAsync();
-
-                JObject json = JObject.Parse(result);
-
-                var test = await GetTransactionWorkouts(int.Parse(json["transaction-id"].ToString()), json["resource-uri"].ToString(), polar.Token);
-                var test2 = await CommitTransaction(int.Parse(json["transaction-id"].ToString()), polar.PolarUserId, polar.Token);
+                response.Data = result;
+                response.Success = true;
             }
 
             return response;
-        }
-        private string get_authorization_url()
-        {
-            Dictionary<string, string> Params = new Dictionary<string, string>();
-
-            Params.Add("client_id", _config.GetSection("Polar:Client_Id").Value.ToString());
-            Params.Add("response_type", "code");
-            Params.Add("redirect_url", _config.GetSection("Polar:Redirect").Value.ToString());
-
-            return QueryHelpers.AddQueryString(_config.GetSection("Polar:Auth").Value.ToString(), Params);
-        }
-
-        private async Task<string> get_access_token(string _code)
-        {
-            StringContent data_req = new StringContent("grant_type=authorization_code&code=" + _code, System.Text.Encoding.UTF8, "application/x-www-form-urlencoded");
-            data_req.Headers.ContentType.CharSet = "";
-
-            string content = data_req.ReadAsStringAsync().Result;
-
-            var authToken = System.Text.Encoding.ASCII.GetBytes($"{_config.GetSection("Polar:Client_Id").Value.ToString()}:{_config.GetSection("Polar:Client_Secret").Value.ToString()}");
-
-            var client = new HttpClient();
-
-            client.DefaultRequestHeaders.Accept.Clear();
-
-            client.BaseAddress = new Uri(_config.GetSection("Polar:Access").Value.ToString() + "?grant_type=authorization_code&code=" + _code);
-            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json;charset=UTF-8");
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(authToken));
-
-            var response = await client.PostAsync(_config.GetSection("Polar:Access").Value.ToString(), data_req);
-
-            string result = await response.Content.ReadAsStringAsync();
-
-            return result;
-        }
-
-        private async Task<string> RegisterUserCall(string accessToken, int userId)
-        {
-            StringContent data_req = new StringContent("{\"member-id\": " + "\"" + userId + "\"}",
-                                    System.Text.Encoding.UTF8,
-                                    "application/json");
-            data_req.Headers.ContentType.CharSet = "";
-            var client = new HttpClient();
-
-            client.DefaultRequestHeaders.Accept.Clear();
-
-            client.BaseAddress = new Uri("https://www.polaraccesslink.com/v3/users");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json;");
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-
-            var response = await client.PostAsync(client.BaseAddress, data_req);
-
-            return response.StatusCode.ToString();
-        }
-
-        private async Task<string> UnregisterUser(string accessToken, int polarUserId)
-        {
-            var client = new HttpClient();
-            client.BaseAddress = new Uri("https://www.polaraccesslink.com/v3/users/" + polarUserId);
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-
-            var response = await client.DeleteAsync(client.BaseAddress);
-
-            return response.StatusCode.ToString();
         }
 
         private async Task<ServiceResponse<string>> GetTransactionWorkouts(int transactionId, string resourceUri, string token)
@@ -217,39 +243,62 @@ namespace training_diary_backend.Services.Polar
             var response = new ServiceResponse<string>();
 
             var client = new HttpClient();
-            Console.WriteLine("GET TRANSACTION WORKOUTS");
 
             client.BaseAddress = new Uri(resourceUri);
             client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json;");
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-            var clientResponse = await client.GetAsync(client.BaseAddress);
+            var polarResponse = await client.GetAsync(client.BaseAddress);
 
-            Console.WriteLine(clientResponse);
+            if (polarResponse.StatusCode.ToString() == "NoContent")
+            {
+                response.Success = false;
+                response.Message = "No data";
+            }
 
-            var result = await clientResponse.Content.ReadAsStringAsync();
+            else
+            {
+                var result = await polarResponse.Content.ReadAsStringAsync();
 
-            Console.WriteLine(result);
+                response.Data = result;
+                response.Success = true;
+            }
+
             return response;
         }
 
-        private async Task<string> CommitTransaction(int transactionId, int polarUserId, string token)
+        private async Task<ServiceResponse<string>> CommitTransaction(int transactionId, int polarUserId, string token)
         {
+            var response = new ServiceResponse<string>();
+
             var client = new HttpClient();
 
-            Console.WriteLine("COMMIT TRANSACTIONS");
-            Console.WriteLine(token);
-
-            client.BaseAddress = new Uri(_config.GetSection("Polar:Url").Value.ToString() + "users/" + polarUserId + "/exercise-transactions/" + transactionId);
-            Console.WriteLine(client.BaseAddress);
+            client.BaseAddress = new Uri(_config.GetSection("Polar:Url").Value.ToString() + "/users/" + polarUserId + "/exercise-transactions/" + transactionId);
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-            var response = await client.PutAsync(client.BaseAddress, new StringContent(""));
-            Console.WriteLine(response);
-            var result = await response.Content.ReadAsStringAsync();
-            Console.WriteLine(result);
+            var polarResponse = await client.PutAsync(client.BaseAddress, new StringContent(""));
 
-            return string.Empty;
+
+            if (polarResponse.StatusCode.ToString() == "NoContent")
+            {
+                response.Success = false;
+                response.Message = "No data";
+            }
+            else if (polarResponse.StatusCode.ToString() == "NotFound")
+            {
+                response.Success = false;
+                response.Data = "Not found";
+            }
+
+            else
+            {
+                var result = await polarResponse.Content.ReadAsStringAsync();
+
+                response.Data = result;
+                response.Success = true;
+            }
+
+            return response;
         }
     }
 }

@@ -56,5 +56,13 @@ namespace training_diary_backend.Controllers
 
             return Ok(response);
         }
+
+        [HttpGet("workout")]
+        public async Task<ActionResult> GetWorkout(int workoutId, int polarUserId)
+        {
+            var response = await _provider.GetWorkout(workoutId, polarUserId);
+
+            return Ok(response);
+        }
     }
 }

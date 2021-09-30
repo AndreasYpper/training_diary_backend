@@ -64,6 +64,7 @@ namespace training_diary_backend
                     };
                 });
             services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+            services.AddScoped<IProviderUser, ProviderUser>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

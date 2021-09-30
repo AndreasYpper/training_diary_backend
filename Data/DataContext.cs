@@ -15,5 +15,6 @@ namespace training_diary_backend.Data
         public DbSet<User> Users { get; set; }
 
         public DbSet<PolarUser> PolarUsers { get; set; }
+        public DbSet<PolarWorkout> PolarWorkouts { get; set; }
     }
 }
