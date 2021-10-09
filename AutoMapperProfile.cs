@@ -1,5 +1,4 @@
 using AutoMapper;
-using training_diary_backend.Dtos.Workout;
 using training_diary_backend.Models;
 
 namespace dotNET_rpg
@@ -8,8 +7,8 @@ namespace dotNET_rpg
     {
         public AutoMapperProfile()
         {
-            CreateMap<Workout, GetWorkoutDto>();
-            CreateMap<AddWorkoutDto, Workout>();
+            // CreateMap<Workout, GetWorkoutDto>();
+            // CreateMap<AddWorkoutDto, Workout>();
         }
     }
 }

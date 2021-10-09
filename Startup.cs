@@ -18,7 +18,7 @@ using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Filters;
 using training_diary_backend.Data;
 using training_diary_backend.Services.Polar;
-using training_diary_backend.Services.WorkoutService;
+using training_diary_backend.Services.Workout;
 
 namespace training_diary_backend
 {
@@ -49,7 +49,6 @@ namespace training_diary_backend
                 c.OperationFilter<SecurityRequirementsOperationFilter>();
             });
             services.AddAutoMapper(typeof(Startup));
-            services.AddScoped<IWorkoutService, WorkoutService>();
             services.AddScoped<IAuthRepository, AuthRepository>();
             services.AddScoped<IExerciseProviderService, ExerciseProviderService>();
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -66,6 +65,7 @@ namespace training_diary_backend
             services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
             services.AddScoped<IProviderUser, ProviderUser>();
             services.AddScoped<IProviderExercise, ProviderExercise>();
+            services.AddScoped<IWorkoutService, WorkoutService>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

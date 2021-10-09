@@ -10,8 +10,6 @@ namespace training_diary_backend.Models
         public string Email { get; set; }
         public byte[] PasswordHash { get; set; }
         public byte[] PasswordSalt { get; set; }
-
-        public List<Workout> Workouts { get; set; }
         public List<PolarWorkout> PolarWorkouts { get; set; }
         public PolarUser PolarUser { get; set; }
     }
